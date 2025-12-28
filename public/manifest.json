@@ -1,0 +1,8 @@
+﻿{
+  "name": "AgentPipeline",
+  "short_name": "AgentPipeline",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#0b1220",
+  "theme_color": "#0b1220"
+}
