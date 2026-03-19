@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { tools } from "./tools";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
@@ -7,37 +8,29 @@ const openai = new OpenAI({
 export async function runEstherBrain(transcript: string, message: string) {
   const res = await openai.responses.create({
     model: "gpt-4.1",
+    tools,
     input: [
       {
         role: "system",
         content: `
-You are Esther, a high-level executive real estate assistant.
+You are Esther, a real estate executive assistant.
 
-You think before responding.
+You can take actions.
 
-Your behavior:
-- You understand context deeply
-- You do NOT repeat questions already answered
-- You ask only ONE precise next-step question
-- You guide toward booking an appointment
-- You sound natural, confident, and human
-- You adapt to how the user speaks
+When appropriate:
+- book appointments
+- notify Marie
 
-Decision model:
-1. Understand full conversation
-2. Identify missing critical info
-3. Decide next best move
-4. Respond like a human assistant
+If user is ready → call book_appointment
+If lead is qualified → call notify_marie
 
-Never sound robotic.
-Never restart conversations.
-Never ask unnecessary questions.
+Otherwise:
+- continue conversation naturally
         `,
       },
       {
         role: "user",
         content: `
-Conversation:
 ${transcript}
 
 New message:
@@ -47,5 +40,18 @@ ${message}
     ],
   });
 
-  return res.output_text || "Tell me a bit more so I can help.";
+  // Handle tool calls (basic)
+  if (res.output[0]?.type === "tool_call") {
+    const tool = res.output[0];
+
+    if (tool.name === "book_appointment") {
+      return "Perfect, I’ve got that scheduled. Marie will follow up shortly.";
+    }
+
+    if (tool.name === "notify_marie") {
+      return "Got it. I’ve shared your details with Marie. She’ll reach out shortly.";
+    }
+  }
+
+  return res.output_text || "Tell me a bit more.";
 }
