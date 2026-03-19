@@ -8,7 +8,7 @@ const openai = new OpenAI({
 export async function runEstherBrain(transcript: string, message: string) {
   const res = await openai.responses.create({
     model: "gpt-4.1",
-    tools,
+    tools: tools as any,
     input: [
       {
         role: "system",
