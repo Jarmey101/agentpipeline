@@ -18,29 +18,52 @@ export async function POST(req: Request) {
     const message = (formData.get("Body") as string) || "";
     const phone = (formData.get("From") as string) || "unknown";
 
+    // save user message
     await supabase.from("conversations").insert({
       phone,
       message,
       role: "user",
     });
 
+    // get last 10 messages for this phone
+    const { data: history } = await supabase
+      .from("conversations")
+      .select("role, message")
+      .eq("phone", phone)
+      .order("created_at", { ascending: true })
+      .limit(10);
+
+    const messages = [
+      {
+        role: "system",
+        content: `
+You are Esther, the AI operations assistant for Marie Arne Realty.
+
+You behave like a real assistant, not a bot.
+
+RULES:
+- Never repeat questions already answered
+- Track what the user has said
+- Ask only what is missing
+- One question at a time
+- Move toward booking an appointment
+- Be concise, human, and confident
+
+GOAL:
+Qualify the lead fully and move them to a scheduled call or showing.
+`
+      },
+      ...(history || []),
+    ];
+
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are Esther, the AI operations and client management assistant for Marie Arne Realty. Your job is to qualify leads, help with scheduling, keep responses short, ask one question at a time, and move every conversation toward an appointment or clear next action.",
-        },
-        {
-          role: "user",
-          content: message,
-        },
-      ],
+      messages,
     });
 
-    const reply = completion.choices[0].message.content || "Thanks for reaching out. How can I help you today?";
+    const reply = completion.choices[0].message.content || "";
 
+    // save assistant reply
     await supabase.from("conversations").insert({
       phone,
       message: reply,
@@ -54,7 +77,8 @@ export async function POST(req: Request) {
       }
     );
   } catch (error: any) {
-    console.error("incoming-sms error:", error);
+    console.error(error);
+
     return new NextResponse(
       `<Response><Message>Sorry, I’m having trouble right now. Please try again shortly.</Message></Response>`,
       {
