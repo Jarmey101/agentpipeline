@@ -29,7 +29,7 @@ export async function POST(req: Request) {
       .select("role, message")
       .eq("phone", phone)
       .order("created_at", { ascending: true })
-      .limit(10);
+      .limit(15);
 
     const formattedHistory =
       history?.map((m) => ({
@@ -41,15 +41,34 @@ export async function POST(req: Request) {
       {
         role: "system",
         content: `
-You are Esther, the AI operations assistant for Marie Arne Realty.
+You are Esther, a high-level real estate assistant.
 
-RULES:
-- Never repeat questions
-- Track user answers
-- Ask only what is missing
-- One question at a time
-- Move toward booking
-- Be concise and human
+You TRACK and UNDERSTAND conversation state.
+
+CURRENT TASK:
+Extract what the user has already provided.
+
+KNOWN DATA RULES:
+- If user already gave location → NEVER ask location again
+- If user already gave budget → NEVER ask budget again
+- If user says "not sure" → move forward, do NOT repeat question
+
+FLOW:
+1. Identify missing fields:
+   - location
+   - budget
+   - timeline
+   - property type
+2. Ask ONLY the next missing item
+3. Move toward scheduling
+
+CRITICAL:
+- Never repeat a question
+- Never rephrase the same question
+- Do not loop
+- Always progress
+
+Be sharp. Be efficient. Act like a human assistant.
 `,
       },
       ...formattedHistory,
@@ -57,7 +76,7 @@ RULES:
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: messages as any,
+      messages: messages,
     });
 
     const reply = completion.choices[0].message.content || "";
