@@ -18,14 +18,12 @@ export async function POST(req: Request) {
     const message = (formData.get("Body") as string) || "";
     const phone = (formData.get("From") as string) || "unknown";
 
-    // save user message
     await supabase.from("conversations").insert({
       phone,
       message,
       role: "user",
     });
 
-    // get history
     const { data: history } = await supabase
       .from("conversations")
       .select("role, message")
@@ -33,22 +31,21 @@ export async function POST(req: Request) {
       .order("created_at", { ascending: true })
       .limit(10);
 
-    // FIX: map to correct format
     const formattedHistory =
       history?.map((m) => ({
-        role: m.role as "user" | "assistant",
-        content: m.message,
+        role: m.role === "assistant" ? "assistant" : "user",
+        content: String(m.message),
       })) || [];
 
-    const messages = [
+    const messages: any = [
       {
         role: "system",
         content: `
 You are Esther, the AI operations assistant for Marie Arne Realty.
 
 RULES:
-- Do not repeat questions
-- Track what the user already said
+- Never repeat questions
+- Track user answers
 - Ask only what is missing
 - One question at a time
 - Move toward booking
@@ -60,7 +57,7 @@ RULES:
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages,
+      messages: messages as any,
     });
 
     const reply = completion.choices[0].message.content || "";
