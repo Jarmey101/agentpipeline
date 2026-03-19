@@ -25,7 +25,7 @@ export async function POST(req: Request) {
       role: "user",
     });
 
-    // get last 10 messages for this phone
+    // get history
     const { data: history } = await supabase
       .from("conversations")
       .select("role, message")
@@ -33,27 +33,29 @@ export async function POST(req: Request) {
       .order("created_at", { ascending: true })
       .limit(10);
 
+    // FIX: map to correct format
+    const formattedHistory =
+      history?.map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.message,
+      })) || [];
+
     const messages = [
       {
         role: "system",
         content: `
 You are Esther, the AI operations assistant for Marie Arne Realty.
 
-You behave like a real assistant, not a bot.
-
 RULES:
-- Never repeat questions already answered
-- Track what the user has said
+- Do not repeat questions
+- Track what the user already said
 - Ask only what is missing
 - One question at a time
-- Move toward booking an appointment
-- Be concise, human, and confident
-
-GOAL:
-Qualify the lead fully and move them to a scheduled call or showing.
-`
+- Move toward booking
+- Be concise and human
+`,
       },
-      ...(history || []),
+      ...formattedHistory,
     ];
 
     const completion = await openai.chat.completions.create({
@@ -63,7 +65,6 @@ Qualify the lead fully and move them to a scheduled call or showing.
 
     const reply = completion.choices[0].message.content || "";
 
-    // save assistant reply
     await supabase.from("conversations").insert({
       phone,
       message: reply,
@@ -72,19 +73,14 @@ Qualify the lead fully and move them to a scheduled call or showing.
 
     return new NextResponse(
       `<Response><Message>${reply}</Message></Response>`,
-      {
-        headers: { "Content-Type": "text/xml" },
-      }
+      { headers: { "Content-Type": "text/xml" } }
     );
   } catch (error: any) {
     console.error(error);
 
     return new NextResponse(
-      `<Response><Message>Sorry, I’m having trouble right now. Please try again shortly.</Message></Response>`,
-      {
-        status: 200,
-        headers: { "Content-Type": "text/xml" },
-      }
+      `<Response><Message>System error. Try again.</Message></Response>`,
+      { status: 200, headers: { "Content-Type": "text/xml" } }
     );
   }
 }
