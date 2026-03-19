@@ -41,14 +41,14 @@ ${message}
   });
 
   // Handle tool calls (basic)
-  if (res.output[0]?.type === "tool_call") {
+  if (res.output[0]?.type === "function_call") {
     const tool = res.output[0];
 
-    if (tool.name === "book_appointment") {
+    if (tool.function.name === "book_appointment") {
       return "Perfect, I’ve got that scheduled. Marie will follow up shortly.";
     }
 
-    if (tool.name === "notify_marie") {
+    if (tool.function.name === "notify_marie") {
       return "Got it. I’ve shared your details with Marie. She’ll reach out shortly.";
     }
   }
