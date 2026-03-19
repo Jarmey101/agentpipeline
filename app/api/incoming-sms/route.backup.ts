@@ -1,4 +1,3 @@
-import { runEstherBrain } from "../../../lib/ai/esther-brain";
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
@@ -61,7 +60,87 @@ export async function POST(req: Request) {
       .map((m) => `${m.role}: ${String(m.message)}`)
       .join("\n");
 
-    let reply = await runEstherBrain(transcript, incomingMessage);
+    const extractionPrompt = `
+You are analyzing an SMS conversation for a real estate assistant.
+
+Return ONLY valid JSON.
+Do not include markdown.
+Do not include explanations.
+
+Extract the lead state from the full transcript below.
+
+Rules:
+- If the user already gave a city like "Fort Worth", locationKnown should be true.
+- If the user says "not sure" about neighborhood, do NOT ask the same neighborhood question again.
+- If the user gives a budget like "800k", budgetKnown should be true.
+- If the latest user message is just "hi", "hello", "yes", or another short filler, do NOT reset the conversation.
+- Keep prior known facts from earlier messages.
+- intent should be one of: buy, sell, rent, unknown
+- For missing values use null
+- greetingOnly should be true only if the latest message is a greeting/filler with no new info
+
+Return this exact JSON shape:
+{
+  "intent": "buy|sell|rent|unknown",
+  "city": string | null,
+  "neighborhood": string | null,
+  "budget": string | null,
+  "timeline": string | null,
+  "propertyType": string | null,
+  "financing": string | null,
+  "name": string | null,
+  "locationKnown": boolean,
+  "budgetKnown": boolean,
+  "timelineKnown": boolean,
+  "propertyTypeKnown": boolean,
+  "financingKnown": boolean,
+  "greetingOnly": boolean,
+  "summary": string
+}
+
+Transcript:
+${transcript}
+`;
+
+    const extraction = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content:
+            "You extract structured state from SMS conversations. Return only JSON.",
+        },
+        {
+          role: "user",
+          content: extractionPrompt,
+        },
+      ],
+      temperature: 0,
+      response_format: { type: "json_object" } as any,
+    } as any);
+
+    const extractionText = extraction.choices[0]?.message?.content || "{}";
+    const state = safeJsonParse(extractionText) || {
+      intent: "unknown",
+      city: null,
+      neighborhood: null,
+      budget: null,
+      timeline: null,
+      propertyType: null,
+      financing: null,
+      name: null,
+      locationKnown: false,
+      budgetKnown: false,
+      timelineKnown: false,
+      propertyTypeKnown: false,
+      financingKnown: false,
+      greetingOnly: false,
+      summary: "",
+    };
+
+    const latest = incomingMessage.toLowerCase();
+
+    let reply = "";
 
     if (state.greetingOnly && state.intent !== "unknown") {
       const pieces: string[] = [];
