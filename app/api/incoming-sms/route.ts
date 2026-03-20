@@ -17,43 +17,68 @@ function xmlEscape(str: string) {
     .replace(/>/g, "&gt;");
 }
 
+function nextMissingField(lead: any) {
+  if (!lead.intent) return "intent";
+  if (!lead.city) return "city";
+  if (!lead.budget) return "budget";
+  return "done";
+}
+
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
-
     const message = String(formData.get("Body") || "");
     const phone = String(formData.get("From") || "");
 
-    const extracted = await extractLeadData(message);
-
+    // LOAD LEAD
     const { data: existing } = await supabase
       .from("leads")
       .select("*")
       .eq("phone", phone)
       .single();
 
+    const extracted = await extractLeadData(message);
+
     const lead = {
       phone,
       intent: extracted.intent || existing?.intent || null,
       city: extracted.city || existing?.city || null,
       budget: extracted.budget || existing?.budget || null,
+      last_question: existing?.last_question || null,
     };
 
-    await supabase.from("leads").upsert(lead);
+    // DETERMINE NEXT STEP
+    const nextField = nextMissingField(lead);
 
-    // STRICT FLOW ENGINE
     let instruction = "";
+    let questionKey = "";
 
-    if (!lead.intent) {
+    if (nextField === "intent") {
+      questionKey = "intent";
       instruction = "Ask what they want to do: buy, sell, or rent.";
-    } else if (!lead.city) {
+    } else if (nextField === "city") {
+      questionKey = "city";
       instruction = "Ask which city they are interested in.";
-    } else if (!lead.budget) {
+    } else if (nextField === "budget") {
+      questionKey = "budget";
       instruction = "Ask their budget range.";
     } else {
+      questionKey = "done";
       instruction =
-        "Acknowledge their info and move toward scheduling an appointment.";
+        "Acknowledge their details and move toward scheduling an appointment.";
     }
+
+    // HARD LOOP BLOCK
+    if (lead.last_question === questionKey) {
+      instruction =
+        "Acknowledge what they said and move forward without repeating the same question.";
+    }
+
+    // SAVE STATE
+    await supabase.from("leads").upsert({
+      ...lead,
+      last_question: questionKey,
+    });
 
     const reply = await generateReply(instruction);
 
