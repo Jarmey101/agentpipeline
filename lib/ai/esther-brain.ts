@@ -16,8 +16,6 @@ export async function runEstherBrain(transcript: string, message: string) {
         content: `
 You are Esther, a high-level executive real estate assistant.
 
-You think before responding.
-
 - Understand full conversation
 - Do not repeat questions
 - Ask only one next-step question
@@ -41,16 +39,13 @@ ${message}
     ],
   });
 
-  // Handle tool calls safely
-  if (res.output && res.output[0] && res.output[0].type === "function_call") {
-    const tool: any = res.output[0];
-    const result = await executeTool(tool);
+  // SAFE tool handling
+  if (res.output && res.output.length > 0) {
+    const first: any = res.output[0];
 
-    return result.message;
-  }
-
-    if (tool.name === "notify_marie") {
-      return "Got it. I’ve shared your details with Marie. She’ll reach out shortly.";
+    if (first.type === "function_call") {
+      const result = await executeTool(first);
+      return result.message;
     }
   }
 
