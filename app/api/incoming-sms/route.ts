@@ -17,11 +17,19 @@ function xmlEscape(str: string) {
     .replace(/>/g, "&gt;");
 }
 
-function nextMissingField(lead: any) {
+function nextField(lead: any) {
   if (!lead.intent) return "intent";
   if (!lead.city) return "city";
   if (!lead.budget) return "budget";
   return "done";
+}
+
+// VALIDATION LAYER
+function didAnswer(field: string, extracted: any) {
+  if (field === "intent") return !!extracted.intent;
+  if (field === "city") return !!extracted.city;
+  if (field === "budget") return !!extracted.budget;
+  return false;
 }
 
 export async function POST(req: Request) {
@@ -30,7 +38,6 @@ export async function POST(req: Request) {
     const message = String(formData.get("Body") || "");
     const phone = String(formData.get("From") || "");
 
-    // LOAD LEAD
     const { data: existing } = await supabase
       .from("leads")
       .select("*")
@@ -44,40 +51,32 @@ export async function POST(req: Request) {
       intent: extracted.intent || existing?.intent || null,
       city: extracted.city || existing?.city || null,
       budget: extracted.budget || existing?.budget || null,
-      last_question: existing?.last_question || null,
+      current_field: existing?.current_field || "intent",
     };
 
-    // DETERMINE NEXT STEP
-    const nextField = nextMissingField(lead);
+    const field = nextField(lead);
 
     let instruction = "";
-    let questionKey = "";
 
-    if (nextField === "intent") {
-      questionKey = "intent";
-      instruction = "Ask what they want to do: buy, sell, or rent.";
-    } else if (nextField === "city") {
-      questionKey = "city";
-      instruction = "Ask which city they are interested in.";
-    } else if (nextField === "budget") {
-      questionKey = "budget";
-      instruction = "Ask their budget range.";
+    if (didAnswer(field, extracted)) {
+      // MOVE FORWARD
+      if (field === "intent") instruction = "Ask which city they are interested in.";
+      else if (field === "city") instruction = "Ask their budget.";
+      else if (field === "budget") instruction = "Move toward scheduling.";
+      else instruction = "Move toward scheduling.";
     } else {
-      questionKey = "done";
-      instruction =
-        "Acknowledge their details and move toward scheduling an appointment.";
+      // DO NOT REPEAT — REFRAME
+      if (field === "intent")
+        instruction = "Ask what they want to do in a different natural way.";
+      else if (field === "city")
+        instruction = "Ask location in a different way without repeating.";
+      else if (field === "budget")
+        instruction = "Ask budget differently without repeating.";
     }
 
-    // HARD LOOP BLOCK
-    if (lead.last_question === questionKey) {
-      instruction =
-        "Acknowledge what they said and move forward without repeating the same question.";
-    }
-
-    // SAVE STATE
     await supabase.from("leads").upsert({
       ...lead,
-      last_question: questionKey,
+      current_field: field,
     });
 
     const reply = await generateReply(instruction);
@@ -88,7 +87,7 @@ export async function POST(req: Request) {
     );
   } catch {
     return new NextResponse(
-      `<Response><Message>What are you looking to do—buy, sell, or rent?</Message></Response>`,
+      `<Response><Message>What are you looking to do?</Message></Response>`,
       { status: 200, headers: { "Content-Type": "text/xml" } }
     );
   }
