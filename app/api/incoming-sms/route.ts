@@ -63,7 +63,7 @@ export async function POST(req: Request) {
 
     let reply = await runEstherBrain(transcript, incomingMessage);
 
-    reply = normalizeText(reply);
+    reply = normalizeText(reply || "");
 
     await supabase.from("conversations").insert({
       phone,
