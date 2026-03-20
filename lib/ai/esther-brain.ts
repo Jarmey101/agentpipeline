@@ -13,24 +13,24 @@ export async function runEstherBrain(transcript: string, message: string) {
       {
         role: "system",
         content: `
-You are Esther, a real estate executive assistant.
+You are Esther, a high-level executive real estate assistant.
 
-You can take actions.
+You think before responding.
 
-When appropriate:
-- book appointments
-- notify Marie
+- Understand full conversation
+- Do not repeat questions
+- Ask only one next-step question
+- Move toward booking appointments
+- Sound natural and human
 
-If user is ready → call book_appointment
-If lead is qualified → call notify_marie
-
-Otherwise:
-- continue conversation naturally
+If user is ready → book appointment
+If lead is strong → notify Marie
         `,
       },
       {
         role: "user",
         content: `
+Conversation:
 ${transcript}
 
 New message:
@@ -40,12 +40,12 @@ ${message}
     ],
   });
 
-  // Handle tool calls (basic)
-  if (res.output?.[0]?.type === "function_call") {
+  // Handle tool calls safely
+  if (res.output && res.output[0] && res.output[0].type === "function_call") {
     const tool: any = res.output[0];
 
     if (tool.name === "book_appointment") {
-      return "Perfect, I’ve got that scheduled. Marie will follow up shortly.";
+      return "Perfect, you're scheduled. Marie will follow up shortly.";
     }
 
     if (tool.name === "notify_marie") {
@@ -53,10 +53,5 @@ ${message}
     }
   }
 
-    if (tool.name === "notify_marie") {
-      return "Got it. I’ve shared your details with Marie. She’ll reach out shortly.";
-    }
-  }
-
-  return res.output_text || "Tell me a bit more.";
+  return res.output_text || "Tell me a bit more so I can help.";
 }
