@@ -16,13 +16,17 @@ function xmlEscape(str: string) {
     .replace(/'/g, "&apos;");
 }
 
-function extractState(history: any[]) {
-  const text = history.map(h => h.message.toLowerCase()).join(" ");
+function extractEntities(msg: string) {
+  const m = msg.toLowerCase();
 
   return {
-    intent: /(buy|sell|rent)/.test(text),
-    city: /(houston|dallas|austin|miami|new york)/.test(text),
-    budget: /\$\d+|\d{3,}/.test(text),
+    intent: m.includes("buy") ? "buyer" :
+            m.includes("sell") ? "seller" :
+            m.includes("rent") ? "renter" : null,
+
+    city: m.match(/fort worth|dallas|houston|austin/)?.[0] || null,
+
+    budget: m.match(/\$?\d+[k]?/)?.[0] || null,
   };
 }
 
@@ -33,47 +37,40 @@ export async function POST(req: Request) {
     const incomingMessage = String(formData.get("Body") || "");
     const phone = String(formData.get("From") || "unknown");
 
-    await supabase.from("conversations").insert({
-      phone,
-      message: incomingMessage,
-      role: "user",
-    });
-
-    const { data: history } = await supabase
-      .from("conversations")
-      .select("role, message, created_at")
+    const { data: existing } = await supabase
+      .from("leads")
+      .select("*")
       .eq("phone", phone)
-      .order("created_at", { ascending: true })
-      .limit(20);
+      .single();
 
-    const state = extractState(history || []);
+    const extracted = extractEntities(incomingMessage);
+
+    const lead = {
+      phone,
+      intent: extracted.intent || existing?.intent || null,
+      city: extracted.city || existing?.city || null,
+      budget: extracted.budget || existing?.budget || null,
+      stage: existing?.stage || "start",
+    };
+
+    await supabase.from("leads").upsert(lead);
 
     let instruction = "";
 
-    if (!state.intent) {
-      instruction = "Ask the user what they want to do: buy, sell, or rent.";
-    } else if (!state.city) {
+    if (!lead.intent) {
+      instruction = "Ask what they want to do (buy, sell, rent).";
+    } else if (!lead.city) {
       instruction = "Ask which city they are interested in.";
-    } else if (!state.budget) {
-      instruction = "Ask their price range.";
+    } else if (!lead.budget) {
+      instruction = "Ask their budget.";
     } else {
-      instruction = "Move toward scheduling an appointment.";
+      instruction = "Move toward scheduling.";
     }
 
-    const transcript = (history || [])
-      .map(m => `${m.role}: ${m.message}`)
-      .join("\n");
-
     const reply = await runEstherBrain(
-      transcript + "\nSYSTEM: " + instruction,
+      JSON.stringify(lead) + "\nInstruction: " + instruction,
       incomingMessage
     );
-
-    await supabase.from("conversations").insert({
-      phone,
-      message: reply,
-      role: "assistant",
-    });
 
     return new NextResponse(
       `<Response><Message>${xmlEscape(reply)}</Message></Response>`,
