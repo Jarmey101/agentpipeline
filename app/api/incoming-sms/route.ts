@@ -16,15 +16,15 @@ function xmlEscape(str: string) {
     .replace(/'/g, "&apos;");
 }
 
-function normalizeText(value: string) {
-  return value.trim().replace(/\s+/g, " ");
+function clean(text: string) {
+  return text.trim().replace(/\s+/g, " ");
 }
 
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
 
-    const incomingMessage = normalizeText(String(formData.get("Body") || ""));
+    const incomingMessage = clean(String(formData.get("Body") || ""));
     const phone = String(formData.get("From") || "unknown");
 
     await supabase.from("conversations").insert({
@@ -41,30 +41,30 @@ export async function POST(req: Request) {
       .limit(30);
 
     const transcript = (history || [])
-      .map((m) => `${m.role}: ${String(m.message)}`)
+      .map((m) => `${m.role}: ${m.message}`)
       .join("\n");
 
     let reply = await runEstherBrain(transcript, incomingMessage);
 
-    // FIX LOOP + EMPTY RESPONSE
-    const lowerMsg = incomingMessage.toLowerCase();
+    const lower = incomingMessage.toLowerCase();
 
+    // RESET HANDLING
     if (
-      lowerMsg.includes("start over") ||
-      lowerMsg.includes("reset") ||
-      lowerMsg.includes("who are you") ||
-      lowerMsg.includes("your name")
+      lower.includes("start over") ||
+      lower.includes("reset") ||
+      lower.includes("who are you")
     ) {
       reply =
-        "Hi, I'm Esther, your assistant at Marie Arne Realty. I help with buying, selling, and scheduling appointments. How can I help you today?";
+        "Hi, I'm Esther with Marie Arne Realty. I help with buying, selling, and scheduling. What are you looking to do?";
     }
 
-    if (!reply || typeof reply !== "string" || reply.trim() === "") {
+    // FAILSAFE (NO EMPTY / NO LOOP)
+    if (!reply || reply.trim().length < 2) {
       reply =
-        "Hi, this is Esther from Marie Arne Realty. How can I assist you today?";
+        "Hi, I'm Esther with Marie Arne Realty. How can I help you today?";
     }
 
-    reply = normalizeText(reply);
+    reply = clean(reply);
 
     await supabase.from("conversations").insert({
       phone,
@@ -74,22 +74,12 @@ export async function POST(req: Request) {
 
     return new NextResponse(
       `<Response><Message>${xmlEscape(reply)}</Message></Response>`,
-      {
-        status: 200,
-        headers: { "Content-Type": "text/xml" },
-      }
+      { status: 200, headers: { "Content-Type": "text/xml" } }
     );
-  } catch (error) {
-    console.error("incoming-sms error:", error);
-
+  } catch {
     return new NextResponse(
-      `<Response><Message>${xmlEscape(
-        "Hi, this is Esther. I'm here to help. What are you looking for?"
-      )}</Message></Response>`,
-      {
-        status: 200,
-        headers: { "Content-Type": "text/xml" },
-      }
+      `<Response><Message>Hi, this is Esther. What are you looking for?</Message></Response>`,
+      { status: 200, headers: { "Content-Type": "text/xml" } }
     );
   }
 }

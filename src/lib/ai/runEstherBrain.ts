@@ -4,48 +4,44 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 });
 
-export async function runEstherBrain(transcript: string, message: string) {
-  const res = await openai.responses.create({
-    model: "gpt-4.1",
-    input: [
-      {
-        role: "system",
-        content: `
-You are Esther, a high-level executive real estate assistant.
+export async function runEstherBrain(
+  transcript: string,
+  incomingMessage: string
+): Promise<string> {
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.7,
+      messages: [
+        {
+          role: "system",
+          content: `
+You are Esther, a professional real estate assistant for Marie Arne Realty.
 
-You think before responding.
+RULES:
+- Speak like a real human assistant
+- Never say you have an error
+- Never repeat the same message
+- Guide the conversation naturally
+- If user is vague, ask smart follow-up questions
+- If user wants to restart, reintroduce yourself
+- Keep responses short, helpful, and confident
 
-Your behavior:
-- You understand context deeply
-- You do NOT repeat questions already answered
-- You ask only ONE precise next-step question
-- You guide toward booking an appointment
-- You sound natural, confident, and human
-- You adapt to how the user speaks
+GOALS:
+- Help buy, sell, rent
+- Capture key info (city, budget, timeline)
+- Move conversation toward scheduling appointments
+          `,
+        },
+        {
+          role: "user",
+          content: transcript + "\\nUser: " + incomingMessage,
+        },
+      ],
+    });
 
-Decision model:
-1. Understand full conversation
-2. Identify missing critical info
-3. Decide next best move
-4. Respond like a human assistant
-
-Never sound robotic.
-Never restart conversations.
-Never ask unnecessary questions.
-        `,
-      },
-      {
-        role: "user",
-        content: `
-Conversation:
-${transcript}
-
-New message:
-${message}
-        `,
-      },
-    ],
-  });
-
-  return res.output_text || "Tell me a bit more so I can help.";
+    return completion.choices[0]?.message?.content || "";
+  } catch {
+    return "";
+  }
 }
