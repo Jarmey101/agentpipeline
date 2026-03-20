@@ -17,12 +17,18 @@ function xmlEscape(str: string) {
 }
 
 function clean(text: string) {
-  return text.trim().replace(/\s+/g, " ");
+  return text.trim().toLowerCase();
 }
 
-// detect repeated question patterns
-function isRepeat(prev: string, current: string) {
-  return prev && current && prev.toLowerCase() === current.toLowerCase();
+// extract simple signals
+function extractState(history: any[]) {
+  const text = history.map(h => h.message.toLowerCase()).join(" ");
+
+  return {
+    hasIntent: /(buy|sell|rent)/.test(text),
+    hasCity: /(houston|dallas|austin|miami|new york)/.test(text),
+    hasBudget: /\$\d+|\d{3,}/.test(text),
+  };
 }
 
 export async function POST(req: Request) {
@@ -43,31 +49,32 @@ export async function POST(req: Request) {
       .select("role, message, created_at")
       .eq("phone", phone)
       .order("created_at", { ascending: true })
-      .limit(30);
+      .limit(20);
 
-    const transcript = (history || [])
-      .map((m) => `${m.role}: ${m.message}`)
-      .join("\n");
+    const state = extractState(history || []);
 
-    let reply = await runEstherBrain(transcript, incomingMessage);
+    let reply = "";
 
-    // last assistant message
-    const lastAssistant =
-      history?.reverse().find((m) => m.role === "assistant")?.message || "";
+    // HARD FLOW CONTROL (NO LOOP POSSIBLE)
 
-    // BLOCK REPEAT
-    if (isRepeat(lastAssistant, reply)) {
-      reply =
-        "Got it. Can you tell me a bit more about what you're looking for so I can help you better?";
+    if (!state.hasIntent) {
+      reply = "Are you looking to buy, sell, or rent?";
+    } else if (!state.hasCity) {
+      reply = "Which city are you interested in?";
+    } else if (!state.hasBudget) {
+      reply = "What price range are you considering?";
+    } else {
+      // NOW AI CAN SPEAK (ONLY AFTER DATA COLLECTED)
+      const transcript = (history || [])
+        .map(m => `${m.role}: ${m.message}`)
+        .join("\n");
+
+      reply = await runEstherBrain(transcript, incomingMessage);
+
+      if (!reply || reply.length < 2) {
+        reply = "Got it. Let’s get you scheduled with an agent. What day works best for you?";
+      }
     }
-
-    // FAILSAFE
-    if (!reply || reply.trim().length < 2) {
-      reply =
-        "Hi, I'm Esther with Marie Arne Realty. What are you looking to do—buy, sell, or rent?";
-    }
-
-    reply = clean(reply);
 
     await supabase.from("conversations").insert({
       phone,
@@ -81,7 +88,7 @@ export async function POST(req: Request) {
     );
   } catch {
     return new NextResponse(
-      `<Response><Message>Hi, what are you looking to do—buy, sell, or rent?</Message></Response>`,
+      `<Response><Message>Are you looking to buy, sell, or rent?</Message></Response>`,
       { status: 200, headers: { "Content-Type": "text/xml" } }
     );
   }
