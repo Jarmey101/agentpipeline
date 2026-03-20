@@ -4,38 +4,60 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 });
 
+function detectIntent(msg: string) {
+  const m = msg.toLowerCase();
+
+  if (m.includes("buy")) return "buyer";
+  if (m.includes("sell")) return "seller";
+  if (m.includes("rent")) return "renter";
+
+  return "unknown";
+}
+
+function hasInfo(text: string, keyword: string) {
+  return text.toLowerCase().includes(keyword);
+}
+
 export async function runEstherBrain(
   transcript: string,
   incomingMessage: string
 ): Promise<string> {
   try {
+    const intent = detectIntent(transcript + incomingMessage);
+
+    const alreadyAskedCity = hasInfo(transcript, "city");
+    const alreadyAskedBudget = hasInfo(transcript, "budget");
+
+    const systemPrompt = `
+You are Esther, a real estate assistant.
+
+STRICT RULES:
+- NEVER repeat a question already asked
+- NEVER loop
+- If user is vague → ask ONE specific next question only
+- If user gave info → move forward, do NOT ask again
+- Speak naturally like a human assistant
+- Keep replies short
+
+FLOW:
+- Identify intent (buy, sell, rent)
+- Ask only missing info
+- Move toward scheduling
+
+KNOWN STATE:
+City asked: ${alreadyAskedCity}
+Budget asked: ${alreadyAskedBudget}
+Intent: ${intent}
+`;
+
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      temperature: 0.7,
+      temperature: 0.6,
       messages: [
-        {
-          role: "system",
-          content: `
-You are Esther, a professional real estate assistant for Marie Arne Realty.
-
-RULES:
-- Speak like a real human assistant
-- Never say you have an error
-- Never repeat the same message
-- Guide the conversation naturally
-- If user is vague, ask smart follow-up questions
-- If user wants to restart, reintroduce yourself
-- Keep responses short, helpful, and confident
-
-GOALS:
-- Help buy, sell, rent
-- Capture key info (city, budget, timeline)
-- Move conversation toward scheduling appointments
-          `,
-        },
+        { role: "system", content: systemPrompt },
         {
           role: "user",
-          content: transcript + "\\nUser: " + incomingMessage,
+          content: transcript + "\nUser: " + incomingMessage,
         },
       ],
     });

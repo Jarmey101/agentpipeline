@@ -20,6 +20,11 @@ function clean(text: string) {
   return text.trim().replace(/\s+/g, " ");
 }
 
+// detect repeated question patterns
+function isRepeat(prev: string, current: string) {
+  return prev && current && prev.toLowerCase() === current.toLowerCase();
+}
+
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
@@ -46,22 +51,20 @@ export async function POST(req: Request) {
 
     let reply = await runEstherBrain(transcript, incomingMessage);
 
-    const lower = incomingMessage.toLowerCase();
+    // last assistant message
+    const lastAssistant =
+      history?.reverse().find((m) => m.role === "assistant")?.message || "";
 
-    // RESET HANDLING
-    if (
-      lower.includes("start over") ||
-      lower.includes("reset") ||
-      lower.includes("who are you")
-    ) {
+    // BLOCK REPEAT
+    if (isRepeat(lastAssistant, reply)) {
       reply =
-        "Hi, I'm Esther with Marie Arne Realty. I help with buying, selling, and scheduling. What are you looking to do?";
+        "Got it. Can you tell me a bit more about what you're looking for so I can help you better?";
     }
 
-    // FAILSAFE (NO EMPTY / NO LOOP)
+    // FAILSAFE
     if (!reply || reply.trim().length < 2) {
       reply =
-        "Hi, I'm Esther with Marie Arne Realty. How can I help you today?";
+        "Hi, I'm Esther with Marie Arne Realty. What are you looking to do—buy, sell, or rent?";
     }
 
     reply = clean(reply);
@@ -78,7 +81,7 @@ export async function POST(req: Request) {
     );
   } catch {
     return new NextResponse(
-      `<Response><Message>Hi, this is Esther. What are you looking for?</Message></Response>`,
+      `<Response><Message>Hi, what are you looking to do—buy, sell, or rent?</Message></Response>`,
       { status: 200, headers: { "Content-Type": "text/xml" } }
     );
   }
