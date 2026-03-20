@@ -16,18 +16,13 @@ function xmlEscape(str: string) {
     .replace(/'/g, "&apos;");
 }
 
-function clean(text: string) {
-  return text.trim().toLowerCase();
-}
-
-// extract simple signals
 function extractState(history: any[]) {
   const text = history.map(h => h.message.toLowerCase()).join(" ");
 
   return {
-    hasIntent: /(buy|sell|rent)/.test(text),
-    hasCity: /(houston|dallas|austin|miami|new york)/.test(text),
-    hasBudget: /\$\d+|\d{3,}/.test(text),
+    intent: /(buy|sell|rent)/.test(text),
+    city: /(houston|dallas|austin|miami|new york)/.test(text),
+    budget: /\$\d+|\d{3,}/.test(text),
   };
 }
 
@@ -35,7 +30,7 @@ export async function POST(req: Request) {
   try {
     const formData = await req.formData();
 
-    const incomingMessage = clean(String(formData.get("Body") || ""));
+    const incomingMessage = String(formData.get("Body") || "");
     const phone = String(formData.get("From") || "unknown");
 
     await supabase.from("conversations").insert({
@@ -53,28 +48,26 @@ export async function POST(req: Request) {
 
     const state = extractState(history || []);
 
-    let reply = "";
+    let instruction = "";
 
-    // HARD FLOW CONTROL (NO LOOP POSSIBLE)
-
-    if (!state.hasIntent) {
-      reply = "Are you looking to buy, sell, or rent?";
-    } else if (!state.hasCity) {
-      reply = "Which city are you interested in?";
-    } else if (!state.hasBudget) {
-      reply = "What price range are you considering?";
+    if (!state.intent) {
+      instruction = "Ask the user what they want to do: buy, sell, or rent.";
+    } else if (!state.city) {
+      instruction = "Ask which city they are interested in.";
+    } else if (!state.budget) {
+      instruction = "Ask their price range.";
     } else {
-      // NOW AI CAN SPEAK (ONLY AFTER DATA COLLECTED)
-      const transcript = (history || [])
-        .map(m => `${m.role}: ${m.message}`)
-        .join("\n");
-
-      reply = await runEstherBrain(transcript, incomingMessage);
-
-      if (!reply || reply.length < 2) {
-        reply = "Got it. Let’s get you scheduled with an agent. What day works best for you?";
-      }
+      instruction = "Move toward scheduling an appointment.";
     }
+
+    const transcript = (history || [])
+      .map(m => `${m.role}: ${m.message}`)
+      .join("\n");
+
+    const reply = await runEstherBrain(
+      transcript + "\nSYSTEM: " + instruction,
+      incomingMessage
+    );
 
     await supabase.from("conversations").insert({
       phone,
@@ -88,7 +81,7 @@ export async function POST(req: Request) {
     );
   } catch {
     return new NextResponse(
-      `<Response><Message>Are you looking to buy, sell, or rent?</Message></Response>`,
+      `<Response><Message>What are you looking to do—buy, sell, or rent?</Message></Response>`,
       { status: 200, headers: { "Content-Type": "text/xml" } }
     );
   }
