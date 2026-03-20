@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { tools } from "./tools";
+import { executeTool } from "./tool-executor";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
@@ -43,10 +44,10 @@ ${message}
   // Handle tool calls safely
   if (res.output && res.output[0] && res.output[0].type === "function_call") {
     const tool: any = res.output[0];
+    const result = await executeTool(tool);
 
-    if (tool.name === "book_appointment") {
-      return "Perfect, you're scheduled. Marie will follow up shortly.";
-    }
+    return result.message;
+  }
 
     if (tool.name === "notify_marie") {
       return "Got it. I’ve shared your details with Marie. She’ll reach out shortly.";
