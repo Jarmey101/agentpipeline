@@ -1,16 +1,11 @@
-import { runEstherBrain } from "../../../lib/ai/esther-brain";
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
+import { runEstherBrain } from "../../../src/lib/ai/runEstherBrain";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 function xmlEscape(str: string) {
   return str
@@ -23,14 +18,6 @@ function xmlEscape(str: string) {
 
 function normalizeText(value: string) {
   return value.trim().replace(/\s+/g, " ");
-}
-
-function safeJsonParse(text: string) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
 }
 
 export async function POST(req: Request) {
@@ -46,16 +33,12 @@ export async function POST(req: Request) {
       role: "user",
     });
 
-    const { data: history, error: historyError } = await supabase
+    const { data: history } = await supabase
       .from("conversations")
       .select("role, message, created_at")
       .eq("phone", phone)
       .order("created_at", { ascending: true })
       .limit(30);
-
-    if (historyError) {
-      throw historyError;
-    }
 
     const transcript = (history || [])
       .map((m) => `${m.role}: ${String(m.message)}`)
@@ -63,7 +46,25 @@ export async function POST(req: Request) {
 
     let reply = await runEstherBrain(transcript, incomingMessage);
 
-    reply = normalizeText(reply || "");
+    // FIX LOOP + EMPTY RESPONSE
+    const lowerMsg = incomingMessage.toLowerCase();
+
+    if (
+      lowerMsg.includes("start over") ||
+      lowerMsg.includes("reset") ||
+      lowerMsg.includes("who are you") ||
+      lowerMsg.includes("your name")
+    ) {
+      reply =
+        "Hi, I'm Esther, your assistant at Marie Arne Realty. I help with buying, selling, and scheduling appointments. How can I help you today?";
+    }
+
+    if (!reply || typeof reply !== "string" || reply.trim() === "") {
+      reply =
+        "Hi, this is Esther from Marie Arne Realty. How can I assist you today?";
+    }
+
+    reply = normalizeText(reply);
 
     await supabase.from("conversations").insert({
       phone,
@@ -78,12 +79,12 @@ export async function POST(req: Request) {
         headers: { "Content-Type": "text/xml" },
       }
     );
-  } catch (error: any) {
+  } catch (error) {
     console.error("incoming-sms error:", error);
 
     return new NextResponse(
       `<Response><Message>${xmlEscape(
-        "Sorry, I’m having a temporary issue right now. Please send your city or budget and I’ll keep going."
+        "Hi, this is Esther. I'm here to help. What are you looking for?"
       )}</Message></Response>`,
       {
         status: 200,
