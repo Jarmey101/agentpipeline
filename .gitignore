@@ -39,5 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+<<<<<<< HEAD
 
 .vercel
+=======
+>>>>>>> 28cdda7 (Initial commit from Create Next App)
