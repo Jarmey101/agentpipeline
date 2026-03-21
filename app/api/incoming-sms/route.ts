@@ -57,16 +57,28 @@ if (!lead.budget && extracted.budget) {
   // RESPONSE LOGIC
   let instruction = "";
 
-  if (lead.stage === "intent") {
-    instruction = "Ask what they want to do: buy, sell, or rent.";
-  } else if (lead.stage === "city") {
-    instruction = "Ask which city they are interested in.";
-  } else if (lead.stage === "budget") {
-    instruction = "Ask their budget range.";
-  } else {
-    instruction =
-      "Acknowledge their info and move toward scheduling an appointment.";
-  }
+  if (!lead.intent) {
+  instruction = "Ask what they want to do: buy, sell, or rent.";
+} else if (!lead.city) {
+  instruction = "Ask which city they are interested in.";
+} else if (!lead.budget) {
+  instruction = "Ask their budget range.";
+} else {
+  instruction = `
+User already provided:
+- Intent: ${lead.intent}
+- City: ${lead.city}
+- Budget: ${lead.budget}
+
+Do NOT ask any more qualifying questions.
+
+Your job:
+- Acknowledge the info
+- Move forward to scheduling
+- Offer to set an appointment
+- Sound like a professional real estate assistant
+`;
+}
 
   const reply = await generateReply(`
 You are a professional real estate assistant.
