@@ -36,17 +36,21 @@ export async function POST(req: Request) {
     stage: existing?.stage || "intent",
   };
 
-  // STATE MACHINE
-  if (lead.stage === "intent" && extracted.intent) {
-    lead.intent = extracted.intent;
-    lead.stage = "city";
-  } else if (lead.stage === "city" && extracted.city) {
-    lead.city = extracted.city;
-    lead.stage = "budget";
-  } else if (lead.stage === "budget" && extracted.budget) {
-    lead.budget = extracted.budget;
-    lead.stage = "complete";
-  }
+  // STATE MACHINE (FIXED — NO LOOPING)
+if (!lead.intent && extracted.intent) {
+  lead.intent = extracted.intent;
+  lead.stage = "city";
+}
+
+if (!lead.city && extracted.city) {
+  lead.city = extracted.city;
+  lead.stage = "budget";
+}
+
+if (!lead.budget && extracted.budget) {
+  lead.budget = extracted.budget;
+  lead.stage = "complete";
+}
 
   await supabase.from("leads").upsert(lead);
 
