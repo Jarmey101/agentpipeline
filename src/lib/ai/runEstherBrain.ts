@@ -5,33 +5,26 @@ const openai = new OpenAI({
 });
 
 export async function extractLeadData(message: string) {
-  const res = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    temperature: 0,
-    messages: [
-      {
-        role: "system",
-        content: `
-Extract real estate lead data from message.
+  const text = message.toLowerCase();
 
-Return ONLY JSON:
+  let intent: string | null = null;
+  let city: string | null = null;
+  let budget: string | null = null;
 
-{
-  "intent": "buyer | seller | renter | null",
-  "city": string | null,
-  "budget": string | null
-}
-        `,
-      },
-      { role: "user", content: message },
-    ],
-  });
+  // INTENT DETECTION (HARD RULES)
+  if (text.includes("buy")) intent = "buy";
+  if (text.includes("sell")) intent = "sell";
+  if (text.includes("rent")) intent = "rent";
 
-  try {
-    return JSON.parse(res.choices[0].message.content || "{}");
-  } catch {
-    return {};
-  }
+  // CITY DETECTION (simple for now)
+  if (text.includes("fort worth")) city = "Fort Worth";
+  if (text.includes("dallas")) city = "Dallas";
+
+  // BUDGET DETECTION
+  const budgetMatch = text.match(/\d{3,}/);
+  if (budgetMatch) budget = budgetMatch[0];
+
+  return { intent, city, budget };
 }
 
 export async function generateReply(instruction: string) {
