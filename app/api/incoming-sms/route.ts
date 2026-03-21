@@ -8,7 +8,10 @@ const supabase = createClient(
 );
 
 function xmlEscape(str: string) {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 export async function POST(req: Request) {
@@ -16,11 +19,12 @@ export async function POST(req: Request) {
   const message = String(formData.get("Body") || "");
   const phone = String(formData.get("From") || "");
 
+  // GET EXISTING LEAD (SAFE)
   const { data: existing } = await supabase
     .from("leads")
     .select("*")
     .eq("phone", phone)
-    .single();
+    .maybeSingle();
 
   const extracted = await extractLeadData(message);
 
@@ -32,7 +36,7 @@ export async function POST(req: Request) {
     stage: existing?.stage || "intent",
   };
 
-  // UPDATE STATE ONLY IF VALID
+  // STATE MACHINE
   if (lead.stage === "intent" && extracted.intent) {
     lead.intent = extracted.intent;
     lead.stage = "city";
@@ -46,7 +50,7 @@ export async function POST(req: Request) {
 
   await supabase.from("leads").upsert(lead);
 
-  // HARD STAGE RESPONSE (NO AI DECISION)
+  // RESPONSE LOGIC
   let instruction = "";
 
   if (lead.stage === "intent") {
@@ -61,6 +65,14 @@ export async function POST(req: Request) {
   }
 
   const reply = await generateReply(instruction);
+
+  // ✅ MEMORY WRITE (NEW)
+  await supabase.from("conversations").insert({
+    phone: phone,
+    message: message,
+    response: reply,
+    created_at: new Date().toISOString(),
+  });
 
   return new NextResponse(
     `<Response><Message>${xmlEscape(reply)}</Message></Response>`,
