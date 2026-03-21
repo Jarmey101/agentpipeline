@@ -19,87 +19,83 @@ export async function POST(req: Request) {
   const message = String(formData.get("Body") || "");
   const phone = String(formData.get("From") || "");
 
-  // GET EXISTING LEAD (SAFE)
+  // GET EXISTING LEAD
   const { data: existing } = await supabase
     .from("leads")
     .select("*")
     .eq("phone", phone)
     .maybeSingle();
 
+  // EXTRACT DATA (HARD RULES FUNCTION YOU ADDED)
   const extracted = await extractLeadData(message);
 
+  // MERGE DATA (NO STAGE SYSTEM)
   let lead = {
     phone,
     intent: existing?.intent || null,
     city: existing?.city || null,
     budget: existing?.budget || null,
-    stage: existing?.stage || "intent",
   };
 
-  // STATE MACHINE (FIXED — NO LOOPING)
-if (!lead.intent && extracted.intent) {
-  lead.intent = extracted.intent;
-  lead.stage = "city";
-}
-
-if (!lead.city && extracted.city) {
-  lead.city = extracted.city;
-  lead.stage = "budget";
-}
-
-if (!lead.budget && extracted.budget) {
-  lead.budget = extracted.budget;
-  lead.stage = "complete";
-}
+  if (!lead.intent && extracted.intent) lead.intent = extracted.intent;
+  if (!lead.city && extracted.city) lead.city = extracted.city;
+  if (!lead.budget && extracted.budget) lead.budget = extracted.budget;
 
   await supabase.from("leads").upsert(lead);
 
-  // RESPONSE LOGIC
+  // DETERMINE WHAT IS MISSING
+  let missing: string[] = [];
+
+  if (!lead.intent) missing.push("intent");
+  if (!lead.city) missing.push("city");
+  if (!lead.budget) missing.push("budget");
+
+  // DECISION ENGINE (NO LOOP POSSIBLE)
   let instruction = "";
 
-  if (!lead.intent) {
-  instruction = "Ask what they want to do: buy, sell, or rent.";
-} else if (!lead.city) {
-  instruction = "Ask which city they are interested in.";
-} else if (!lead.budget) {
-  instruction = "Ask their budget range.";
-} else {
-  instruction = `
+  if (missing.length === 0) {
+    instruction = `
 User already provided:
 - Intent: ${lead.intent}
 - City: ${lead.city}
 - Budget: ${lead.budget}
 
-Do NOT ask any more qualifying questions.
+Do NOT ask any more questions.
 
 Your job:
-- Acknowledge the info
-- Move forward to scheduling
-- Offer to set an appointment
-- Sound like a professional real estate assistant
+- Acknowledge
+- Move to scheduling
+- Offer an appointment
+- Be professional and natural
 `;
-}
+  } else {
+    if (missing[0] === "intent") {
+      instruction = "Ask what they want to do: buy, sell, or rent.";
+    }
+
+    if (missing[0] === "city") {
+      instruction = "Ask which city they are interested in.";
+    }
+
+    if (missing[0] === "budget") {
+      instruction = "Ask their budget range.";
+    }
+  }
 
   const reply = await generateReply(`
 You are a professional real estate assistant.
 
-Conversation so far:
+Known info:
 - Intent: ${lead.intent || "unknown"}
 - City: ${lead.city || "unknown"}
 - Budget: ${lead.budget || "unknown"}
 
-User just said: "${message}"
+User said: "${message}"
 
-Your job:
-- DO NOT repeat questions already answered
-- Ask ONLY for missing information
-- Be natural, human, and helpful
-- If all info is collected, move toward scheduling
-
-Instruction: ${instruction}
+${instruction}
 `);
 
-  // ✅ MEMORY WRITE (NEW)
+  // MEMORY LOG
   await supabase.from("conversations").insert({
     phone: phone,
     message: message,
