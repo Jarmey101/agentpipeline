@@ -68,7 +68,24 @@ if (!lead.budget && extracted.budget) {
       "Acknowledge their info and move toward scheduling an appointment.";
   }
 
-  const reply = await generateReply(instruction);
+  const reply = await generateReply(`
+You are a professional real estate assistant.
+
+Conversation so far:
+- Intent: ${lead.intent || "unknown"}
+- City: ${lead.city || "unknown"}
+- Budget: ${lead.budget || "unknown"}
+
+User just said: "${message}"
+
+Your job:
+- DO NOT repeat questions already answered
+- Ask ONLY for missing information
+- Be natural, human, and helpful
+- If all info is collected, move toward scheduling
+
+Instruction: ${instruction}
+`);
 
   // ✅ MEMORY WRITE (NEW)
   await supabase.from("conversations").insert({
