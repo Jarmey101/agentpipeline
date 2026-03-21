@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
+import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
-import { extractLeadData, generateReply } from "../../../src/lib/ai/runEstherBrain";
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY!,
+});
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,86 +23,57 @@ export async function POST(req: Request) {
   const message = String(formData.get("Body") || "");
   const phone = String(formData.get("From") || "");
 
-  // GET EXISTING LEAD
-  const { data: existing } = await supabase
-    .from("leads")
+  // GET MEMORY
+  const { data: history } = await supabase
+    .from("conversations")
     .select("*")
     .eq("phone", phone)
-    .maybeSingle();
+    .order("created_at", { ascending: true })
+    .limit(10);
 
-  // EXTRACT DATA (HARD RULES FUNCTION YOU ADDED)
-  const extracted = await extractLeadData(message);
+  const conversationHistory = (history || [])
+    .map((c) => `User: ${c.message}\nAssistant: ${c.response}`)
+    .join("\n");
 
-  // MERGE DATA (NO STAGE SYSTEM)
-  let lead = {
-    phone,
-    intent: existing?.intent || null,
-    city: existing?.city || null,
-    budget: existing?.budget || null,
-  };
+  // OPENAI AGENT
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content: `
+You are Esther, a professional real estate assistant for Marie Arne Realty.
 
-  if (!lead.intent && extracted.intent) lead.intent = extracted.intent;
-  if (!lead.city && extracted.city) lead.city = extracted.city;
-  if (!lead.budget && extracted.budget) lead.budget = extracted.budget;
+Rules:
+- Never repeat questions
+- Ask one question at a time
+- Be natural and human
+- Guide toward booking an appointment
+- Remember what the user already said
 
-  await supabase.from("leads").upsert(lead);
+If info is missing → ask
+If info is complete → move to scheduling
+`,
+      },
+      {
+        role: "user",
+        content: `
+Conversation history:
+${conversationHistory}
 
-  // DETERMINE WHAT IS MISSING
-  let missing: string[] = [];
+User just said:
+${message}
+`,
+      },
+    ],
+  });
 
-  if (!lead.intent) missing.push("intent");
-  if (!lead.city) missing.push("city");
-  if (!lead.budget) missing.push("budget");
+  const reply = completion.choices[0].message.content || "";
 
-  // DECISION ENGINE (NO LOOP POSSIBLE)
-  let instruction = "";
-
-  if (missing.length === 0) {
-    instruction = `
-User already provided:
-- Intent: ${lead.intent}
-- City: ${lead.city}
-- Budget: ${lead.budget}
-
-Do NOT ask any more questions.
-
-Your job:
-- Acknowledge
-- Move to scheduling
-- Offer an appointment
-- Be professional and natural
-`;
-  } else {
-    if (missing[0] === "intent") {
-      instruction = "Ask what they want to do: buy, sell, or rent.";
-    }
-
-    if (missing[0] === "city") {
-      instruction = "Ask which city they are interested in.";
-    }
-
-    if (missing[0] === "budget") {
-      instruction = "Ask their budget range.";
-    }
-  }
-
-  const reply = await generateReply(`
-You are a professional real estate assistant.
-
-Known info:
-- Intent: ${lead.intent || "unknown"}
-- City: ${lead.city || "unknown"}
-- Budget: ${lead.budget || "unknown"}
-
-User said: "${message}"
-
-${instruction}
-`);
-
-  // MEMORY LOG
+  // SAVE MEMORY
   await supabase.from("conversations").insert({
-    phone: phone,
-    message: message,
+    phone,
+    message,
     response: reply,
     created_at: new Date().toISOString(),
   });
