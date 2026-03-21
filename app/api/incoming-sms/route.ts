@@ -19,67 +19,80 @@ function xmlEscape(str: string) {
 }
 
 export async function POST(req: Request) {
-  const formData = await req.formData();
-  const message = String(formData.get("Body") || "");
-  const phone = String(formData.get("From") || "");
+  try {
+    const formData = await req.formData();
+    const message = String(formData.get("Body") || "");
+    const phone = String(formData.get("From") || "");
 
-  // GET MEMORY
-  const { data: history } = await supabase
-    .from("conversations")
-    .select("*")
-    .eq("phone", phone)
-    .order("created_at", { ascending: true })
-    .limit(10);
+    console.log("Incoming:", { message, phone });
 
-  const conversationHistory = (history || [])
-    .map((c) => `User: ${c.message}\nAssistant: ${c.response}`)
-    .join("\n");
+    // Fetch memory
+    const { data: history, error: historyError } = await supabase
+      .from("conversations")
+      .select("*")
+      .eq("phone", phone)
+      .order("created_at", { ascending: true })
+      .limit(10);
 
-  // OPENAI AGENT
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      {
-        role: "system",
-        content: `
-You are Esther, a professional real estate assistant for Marie Arne Realty.
+    if (historyError) {
+      console.error("Supabase fetch error:", historyError);
+    }
+
+    const conversationHistory = (history || [])
+      .map((c) => `User: ${c.message}\nAssistant: ${c.response}`)
+      .join("\n");
+
+    // OpenAI call
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `
+You are Esther, a professional real estate assistant.
 
 Rules:
-- Never repeat questions
-- Ask one question at a time
-- Be natural and human
-- Guide toward booking an appointment
-- Remember what the user already said
-
-If info is missing → ask
-If info is complete → move to scheduling
+- Never repeat questions already answered
+- Ask only one question at a time
+- Be natural, confident, and human
+- Move toward scheduling an appointment
 `,
-      },
-      {
-        role: "user",
-        content: `
+        },
+        {
+          role: "user",
+          content: `
 Conversation history:
 ${conversationHistory}
 
-User just said:
+User said:
 ${message}
 `,
-      },
-    ],
-  });
+        },
+      ],
+    });
 
-  const reply = completion.choices[0].message.content || "";
+    const reply = completion.choices?.[0]?.message?.content || "Sorry, something went wrong.";
 
-  // SAVE MEMORY
-  await supabase.from("conversations").insert({
-    phone,
-    message,
-    response: reply,
-    created_at: new Date().toISOString(),
-  });
+    console.log("AI Reply:", reply);
 
-  return new NextResponse(
-    `<Response><Message>${xmlEscape(reply)}</Message></Response>`,
-    { status: 200, headers: { "Content-Type": "text/xml" } }
-  );
+    // Save memory (non-blocking safe)
+    await supabase.from("conversations").insert({
+      phone,
+      message,
+      response: reply,
+      created_at: new Date().toISOString(),
+    });
+
+    return new NextResponse(
+      `<Response><Message>${xmlEscape(reply)}</Message></Response>`,
+      { status: 200, headers: { "Content-Type": "text/xml" } }
+    );
+  } catch (error) {
+    console.error("FATAL ERROR:", error);
+
+    return new NextResponse(
+      `<Response><Message>System error. Please try again.</Message></Response>`,
+      { status: 200, headers: { "Content-Type": "text/xml" } }
+    );
+  }
 }
