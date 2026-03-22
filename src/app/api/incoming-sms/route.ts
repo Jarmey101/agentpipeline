@@ -40,7 +40,7 @@ export async function POST(req: Request) {
       .select("role, content")
       .eq("phone", phone)
       .order("created_at", { ascending: true })
-      .limit(8);
+      .limit(20);
 
     if (historyResult.error) {
       throw new Error(`Supabase history fetch failed: ${historyResult.error.message}`);
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
         {
           role: "system",
           content:
-            "You are Esther, a professional real estate assistant for Marie Arne Realty. The latest user message always has highest priority. Use earlier messages only for continuity. Do not claim confusion, mix people, or say you may have confused the user unless the latest message clearly proves a contradiction. Do not repeat the same question if the user already answered it. Do not invent facts. Keep replies concise, natural, and helpful.",
+            "You are Esther, a professional real estate assistant for Marie Arne Realty. You speak naturally, stay organized, remember context, avoid repetitive questions, and help move conversations toward useful next steps.",
         },
         ...conversationHistory,
       ],
