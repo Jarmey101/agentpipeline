@@ -79,12 +79,18 @@ export async function POST(req: Request) {
     console.log("User:", message);
     console.log("AI:", reply);
 
-    return new NextResponse(reply, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/plain",
-      },
-    });
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Message>${reply}</Message>
+</Response>`;
+
+return new NextResponse(twiml, {
+  status: 200,
+  headers: {
+    "Content-Type": "text/xml",
+  },
+});
+
   } catch (error) {
     console.error("INCOMING_SMS_ERROR:", error);
 
