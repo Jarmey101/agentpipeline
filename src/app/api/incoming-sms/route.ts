@@ -16,22 +16,14 @@ function getSupabase() {
 }
 
 export async function POST(req: Request) {
-  const startedAt = Date.now();
-
   try {
-    console.log("STEP 1: request received");
-
     const body = await req.text();
     const params = new URLSearchParams(body);
 
     const message = params.get("Body") || "";
     const phone = params.get("From") || "unknown";
 
-    console.log("STEP 2: parsed inbound", { phone, message });
-
     const supabase = getSupabase();
-
-    console.log("STEP 3: inserting user message");
 
     const insertUser = await supabase.from("messages").insert({
       phone,
@@ -42,8 +34,6 @@ export async function POST(req: Request) {
     if (insertUser.error) {
       throw new Error(`Supabase insert user failed: ${insertUser.error.message}`);
     }
-
-    console.log("STEP 4: user message inserted");
 
     const historyResult = await supabase
       .from("messages")
@@ -56,10 +46,6 @@ export async function POST(req: Request) {
       throw new Error(`Supabase history fetch failed: ${historyResult.error.message}`);
     }
 
-    console.log("STEP 5: history fetched", {
-      count: historyResult.data?.length || 0,
-    });
-
     const conversationHistory =
       (historyResult.data || []).map((row) => ({
         role: row.role as "system" | "user" | "assistant",
@@ -68,27 +54,21 @@ export async function POST(req: Request) {
 
     const openai = getOpenAI();
 
-    console.log("STEP 6: calling OpenAI");
-
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
           content:
-            "You are Esther, a professional real estate assistant for Marie Arne Realty. You speak naturally, stay organized, remember context, avoid repetitive questions, and help move conversations toward useful next steps.",
+            "You are Esther, a professional real estate assistant for Marie Arne Realty. Use conversation history for continuity, but prioritize the latest user message. Do not claim confusion unless the latest message clearly creates ambiguity. Do not invent facts. Stay concise, helpful, and natural.",
         },
         ...conversationHistory,
       ],
     });
 
-    console.log("STEP 7: OpenAI returned");
-
     const reply =
       response.choices[0]?.message?.content?.trim() ||
       "Hello. I received your message.";
-
-    console.log("STEP 8: reply built", { reply });
 
     const insertAssistant = await supabase.from("messages").insert({
       phone,
@@ -102,16 +82,13 @@ export async function POST(req: Request) {
       );
     }
 
-    console.log("STEP 9: assistant message inserted");
+    console.log("User:", message);
+    console.log("AI:", reply);
 
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Message>${reply}</Message>
 </Response>`;
-
-    console.log("STEP 10: returning TwiML", {
-      duration_ms: Date.now() - startedAt,
-    });
 
     return new NextResponse(twiml, {
       status: 200,
@@ -121,7 +98,6 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("INCOMING_SMS_ERROR:", error);
-    console.error("FAILED_AFTER_MS:", Date.now() - startedAt);
 
     const message =
       error instanceof Error ? error.message : "Unknown server error";
