@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { extractAndUpsertLeadProfile } from "@/lib/lead-profile";
 
 function getOpenAI() {
   return new OpenAI({
@@ -46,6 +47,12 @@ export async function POST(req: Request) {
       throw new Error(`Supabase history fetch failed: ${historyResult.error.message}`);
     }
 
+    const conversationHistory =
+      (historyResult.data || []).map((row) => ({
+        role: row.role as "system" | "user" | "assistant",
+        content: row.content,
+      }));
+
     const openai = getOpenAI();
 
     const response = await openai.chat.completions.create({
@@ -56,7 +63,7 @@ export async function POST(req: Request) {
           content:
             "You are Esther, a professional real estate assistant for Marie Arne Realty. You speak naturally, stay organized, remember context, avoid repetitive questions, and help move conversations toward useful next steps.",
         },
-        ...(historyResult.data || []),
+        ...conversationHistory,
       ],
     });
 
@@ -76,6 +83,18 @@ export async function POST(req: Request) {
       );
     }
 
+    try {
+      await extractAndUpsertLeadProfile({
+        phone,
+        conversation: [
+          ...conversationHistory,
+          { role: "assistant", content: reply },
+        ],
+      });
+    } catch (crmError) {
+      console.error("LEAD_PROFILE_EXTRACTION_ERROR:", crmError);
+    }
+
     console.log("User:", message);
     console.log("AI:", reply);
 
@@ -84,13 +103,12 @@ export async function POST(req: Request) {
   <Message>${reply}</Message>
 </Response>`;
 
-return new NextResponse(twiml, {
-  status: 200,
-  headers: {
-    "Content-Type": "text/xml",
-  },
-});
-
+    return new NextResponse(twiml, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/xml",
+      },
+    });
   } catch (error) {
     console.error("INCOMING_SMS_ERROR:", error);
 
