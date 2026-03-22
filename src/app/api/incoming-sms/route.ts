@@ -1,7 +1,6 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { extractAndUpsertLeadProfile } from "@/lib/lead-profile";
 
 function getOpenAI() {
   return new OpenAI({
@@ -81,18 +80,6 @@ export async function POST(req: Request) {
       throw new Error(
         `Supabase insert assistant failed: ${insertAssistant.error.message}`
       );
-    }
-
-    try {
-      await extractAndUpsertLeadProfile({
-        phone,
-        conversation: [
-          ...conversationHistory,
-          { role: "assistant", content: reply },
-        ],
-      });
-    } catch (crmError) {
-      console.error("LEAD_PROFILE_EXTRACTION_ERROR:", crmError);
     }
 
     console.log("User:", message);
