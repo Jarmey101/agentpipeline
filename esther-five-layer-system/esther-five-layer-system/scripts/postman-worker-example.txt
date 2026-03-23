@@ -1,2 +1,0 @@
-POST https://YOUR_DOMAIN/api/internal/process-memory-jobs
-Authorization: Bearer YOUR_INTERNAL_JOB_SECRET
