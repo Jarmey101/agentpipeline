@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/internal/process-memory-jobs",
+      "schedule": "*/2 * * * *"
+    }
+  ]
+}
