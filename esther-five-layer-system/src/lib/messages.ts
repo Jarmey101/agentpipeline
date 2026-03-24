@@ -19,14 +19,14 @@ export async function getRecentMessages(phone: string, limit = 6): Promise<Messa
     .from("messages")
     .select("id, phone, role, content, created_at")
     .eq("phone", phone)
-    .order("created_at", { ascending: true })
+    .order("created_at", { ascending: false })
     .limit(limit);
 
   if (error) {
     throw new Error(`messages fetch failed: ${error.message}`);
   }
 
-  return (data || []) as MessageRow[];
+  return ((data || []) as MessageRow[]).reverse();
 }
 
 export async function getLastAssistantQuestion(phone: string): Promise<string | null> {
